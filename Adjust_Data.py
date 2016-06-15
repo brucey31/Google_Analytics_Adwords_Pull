@@ -20,7 +20,9 @@ RED_PASSWORD = config.get('Redshift Creds', 'password')
 ADJUST_KEY = config.get('Adjust Keys', 'key')
 
 # Dict of app codes, in order of site
-apps = ['yhsi1pxex728', 'jtedsr9c48w0', 'ikg39qjv27ls', 'je9jel72hlaq', 'w93p2l7297wl', 'ugcgvwx8dnll', 'zv2868fxr4xm', 'mtrbgjmnptxb', 'xwvln5xcy2vf', 'n2p3sskujhxm', 'vyk94lbxnrgg', 'xqcgkedmdf7j', 'epd84c76alvx', 'crcz7dcg9kgt', 'p3uz2gym79lz', 'bnzc4e7w56eb', 'b5xdygcr6z2p']
+apps = ['yhsi1pxex728', 'jtedsr9c48w0', 'ikg39qjv27ls', 'je9jel72hlaq', 'w93p2l7297wl', 'ugcgvwx8dnll', 'zv2868fxr4xm',
+        'mtrbgjmnptxb', 'xwvln5xcy2vf', 'n2p3sskujhxm', 'vyk94lbxnrgg', 'xqcgkedmdf7j', 'epd84c76alvx', 'crcz7dcg9kgt',
+        'p3uz2gym79lz', 'bnzc4e7w56eb', 'b5xdygcr6z2p']
 start_date = date(2016, 1, 1)
 end_date = date.today() - timedelta(days=1)
 # end_date = date(2016, 1, 6)
@@ -37,44 +39,55 @@ while start_date <= end_date:
             spamwriter = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
 
             for app in apps:
-                response = requests.get("http://api.adjust.com/kpis/v1/%s?start_date=%s&end_date=%s&kpis=impressions,clicks,installs,revenue,revenue_events&sandbox=false&user_token=%s" % (app, start_date, start_date, ADJUST_KEY))
+                response = requests.get(
+                    "http://api.adjust.com/kpis/v1/%s?start_date=%s&end_date=%s&kpis=impressions,clicks,installs,revenue,revenue_events&sandbox=false&user_token=%s" % (
+                        app, start_date, start_date, ADJUST_KEY))
                 response_json = response.json()
 
-                app = response_json['result_set']['name'].replace('[', '').replace(']','')
+                app = response_json['result_set']['name'].replace('[', '').replace(']', '')
 
-                if 'trackers' in response_json['result_parameters']:
+                if 'trackers' in response_json['result_parameters'] and 'trackers' in response_json['result_set']:
 
                     trackers = response_json['result_parameters']['trackers']
+                    answers = response_json['result_set']['trackers']
                     kpis = response_json['result_parameters']['kpis']
-                    tracker_counter = 0
+
+                    answers_counter = 0
 
                     print '\n' + app + '\n'
 
-                    for tracker in trackers:
+                    for answer in answers:
+
+                        answer_code = answer['token']
+
+                        tracker_counter = 0
+                        for tracker in trackers:
+                            if tracker['token'] == answer_code:
+                                channel = tracker['name']
+                                break
+                            else:
+                                tracker_counter = tracker_counter + 1
+
+                        values = response_json['result_set']['trackers'][answers_counter]['kpi_values']
+
                         value_counter = 0
-                        tracker_false = tracker['has_subtrackers']
 
-                        if tracker_false == True:
+                        for value in values:
+                            list = []
+                            metric = kpis[value_counter]
+                            list.append(start_date.strftime("%Y-%m-%d"))
+                            list.append(app)
+                            list.append(channel)
+                            list.append(metric)
+                            list.append(value)
 
-                            channel = tracker['name']
-                            values = response_json['result_set']['trackers'][tracker_counter]['kpi_values']
+                            spamwriter.writerow(list)
 
-                            for value in values:
-                                list = []
-                                metric = kpis[value_counter]
-                                list.append(start_date.strftime("%Y-%m-%d"))
-                                list.append(app)
-                                list.append(channel)
-                                list.append(metric)
-                                list.append(value)
+                            print str(start_date) + ',' + app + ',' + channel + ',' + metric + ',' + str(value)
 
-                                spamwriter.writerow(list)
+                            value_counter = value_counter + 1
 
-                                print str(start_date) + ',' + app + ',' + channel + ',' + metric + ',' + str(value)
-
-                                value_counter = value_counter + 1
-
-                        tracker_counter = tracker_counter + 1
+                        answers_counter = answers_counter + 1
 
                 else:
                     print '\n' + app + '\n'
@@ -99,9 +112,12 @@ cursor = conn.cursor()
 print "Deleting old table adjust2"
 cursor.execute("drop table if exists adjust2;")
 print "Creating new table \n Adjust2 "
-cursor.execute( "create table adjust2 (date date, app varchar(50), channel varchar(50), metrics varchar(50), value float);")
+cursor.execute(
+    "create table adjust2 (date date, app varchar(50), channel varchar(50), metrics varchar(50), value float);")
 print "Copying Adjust CSV data from S3 to  \n Adjust2 "
-cursor.execute( "COPY adjust2  FROM 's3://bibusuu/Adjust_data'  CREDENTIALS 'aws_access_key_id=%s;aws_secret_access_key=%s' CSV;" % (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY))
+cursor.execute(
+    "COPY adjust2  FROM 's3://bibusuu/Adjust_data'  CREDENTIALS 'aws_access_key_id=%s;aws_secret_access_key=%s' CSV;" % (
+    AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY))
 print "Dropping Table old table \n Adjust"
 cursor.execute("DROP TABLE if exists adjust;")
 print "Renaming table  \n Adjust2 \nto \n Adjust "
