@@ -1,2 +1,2 @@
 cd ~/Google_Analytics_Adwords_Pull
-python Adwords.py
+python Adjust_Data.py
